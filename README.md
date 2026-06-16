@@ -2,7 +2,19 @@
 
 > Publish Feishu/Lark documents or local Markdown to X Articles drafts, with images, videos, and a persistent logged-in X profile.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Skills](https://img.shields.io/badge/skills.sh-Compatible-green)](https://skills.sh) [![X Articles](https://img.shields.io/badge/X-Articles-black)](https://x.com/compose/articles)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Skills](https://img.shields.io/badge/skills.sh-Compatible-green)](https://skills.sh) [![X Articles](https://img.shields.io/badge/X-Articles-black)](https://x.com/compose/articles) [![Maintenance](https://img.shields.io/badge/maintenance-passive-lightgrey)](#maintenance-status)
+
+## Maintenance Status
+
+This skill is in **passive maintenance** as of 2026-06. The workflow it implements (Feishu → local Markdown → X Article draft) is feature-complete for the author's own publishing pipeline, and no new features are planned.
+
+What this means:
+- ✅ Issues and PRs are welcome and will be reviewed when time permits.
+- ✅ Breaking changes from X's web UI or Feishu's export format will be fixed (the author still uses this skill).
+- ❌ New rendering targets, new source platforms, or major refactors are out of scope — fork it if you need a different shape.
+- ❌ No commitment to response time. Critical X UI breaks may take 1-2 weeks.
+
+If you depend on this skill for production publishing, please pin a specific commit and read the release notes before updating.
 
 **This skill turns a Feishu document into a ready-to-review X Article draft.**
 

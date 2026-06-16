@@ -2,7 +2,18 @@
 
 > 把飞书/Lark 文档或本地 Markdown 发布到 X Articles 草稿，支持图片、视频和持久化登录态。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Skills](https://img.shields.io/badge/skills.sh-Compatible-green)](https://skills.sh) [![X Articles](https://img.shields.io/badge/X-Articles-black)](https://x.com/compose/articles)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Skills](https://img.shields.io/badge/skills.sh-Compatible-green)](https://skills.sh) [![X Articles](https://img.shields.io/badge/X-Articles-black)](https://x.com/compose/articles) [![维护状态](https://img.shields.io/badge/%E7%BB%B4%E6%8A%A4-%E8%A2%AB%E5%8A%A8-lightgrey)](#维护状态)
+
+## 维护状态
+
+本 skill 自 2026-06 起进入**被动维护**。它实现的工作流（飞书 → 本地 Markdown → X Article 草稿）对作者自己的发布管线已经够用，没有新功能规划。
+
+- ✅ Issue 和 PR 欢迎提，作者有空就看。
+- ✅ X 网页改版或飞书导出格式变了导致跑不通，会修（作者自己还在用）。
+- ❌ 新渲染目标 / 新来源平台 / 大重构 不在范围 — 需要别的形态请 fork。
+- ❌ 不承诺响应时间。X UI 关键中断可能拖 1-2 周。
+
+如果你依赖本 skill 做生产发布，请 pin 到具体 commit，更新前看 release notes。
 
 **这个 skill 的目标很直接：把一篇飞书文章，变成一篇已经排好图文和视频顺序的 X Article 草稿。**
 
