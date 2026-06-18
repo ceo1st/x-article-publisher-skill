@@ -30,9 +30,10 @@ It downloads the document to Markdown, restores missing Feishu video blocks, kee
 |---|---|
 | Feishu exports often miss videos | Reads Feishu dump JSON, downloads video file blocks, and writes `<video>` tags back into Markdown near the right anchor text |
 | Videos can appear at the end of the article | Uses anchor-based insertion and whitespace-tolerant matching instead of appending videos to the tail |
+| Feishu callout blocks add useless `Tip` text | Normalizes callout markers while preserving multiline highlighted content |
 | Repeated X login is risky | Uses a dedicated persistent browser profile, isolated from your daily Chrome profile |
 | Local Markdown should also work | Skips Feishu download and directly parses local image/video paths |
-| X video upload is fragile | Uploads one video at a time and waits for `Uploading media...` to finish before continuing |
+| X video upload is fragile | Transcodes oversized videos, uploads one video at a time, and verifies final preview order by anchor |
 
 ## Who It Is For
 
@@ -48,6 +49,7 @@ The workflow has been tested on real articles, not only fixtures:
 |---|---|
 | Feishu docx with `1` video and `10` body images | Created a complete X Article draft |
 | Feishu docx with `10` videos and `4` body images | Kept videos and images in source order |
+| Feishu docx with `8` videos and `6` body images | Used video transcodes plus final anchor audit to keep all media in place |
 | Feishu wiki link | Used `--wiki` and restored video ordering |
 | Feishu docx with `34` body media items | Hit the observed X Articles body-media limit around `25` items |
 | Local Markdown with local images and `<video>` tags | Skipped Feishu download and assembled the X draft directly |
@@ -226,10 +228,12 @@ Relative paths are resolved from the Markdown file directory.
 1. **Source routing**: Feishu URL triggers download; local Markdown skips download.
 2. **Feishu recovery**: `feishu2md dl --dump` exports Markdown and JSON; `/wiki/` links use `--wiki`.
 3. **Video restoration**: Feishu file blocks are downloaded from OpenAPI and inserted back near text anchors.
-4. **Markdown parsing**: title, cover, HTML body, images, videos, dividers, and block positions are extracted.
-5. **Persistent X browser**: X opens with `~/.codex/browser-profiles/x-articles` unless overridden.
-6. **Draft assembly**: cover first, title, rich-text body, then media/dividers by descending block index.
-7. **Video safety**: one video upload at a time; wait for X upload overlay to disappear.
+4. **Callout cleanup**: Feishu callout labels like `Tip` or `[!TIP]` are removed while quoted content stays intact.
+5. **Markdown parsing**: title, cover, HTML body, images, videos, dividers, and block positions are extracted.
+6. **Persistent X browser**: X opens with `~/.codex/browser-profiles/x-articles` unless overridden.
+7. **Draft assembly**: cover first, title, rich-text body, then media/dividers by descending block index.
+8. **Video safety**: transcode oversized videos when needed, upload one video at a time, and wait for X processing.
+9. **Final audit**: verify media count and anchor order in the X preview DOM; count alone is not enough.
 
 Full framework: [docs/GUIDE.md](docs/GUIDE.md)
 
@@ -247,6 +251,8 @@ Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - Feishu URL mode depends on a Feishu custom app with document read, media download, and wiki read permissions for `/wiki/` links.
 - Large videos can take minutes to process on X; interruption may leave a partial draft.
 - Some PNG files may be accepted by the file input but ignored by the X editor. Converting that image to JPG has worked as a fallback in practice.
+- Very large or high-bitrate videos may close or destabilize the browser session. In practice, transcoding to `1280px` wide H.264/AAC before upload is much more reliable.
+- X editor-side media counts can drift during long uploads. Use preview DOM checks for `Image`, `Embedded video`, and anchor-to-next-media type before considering a draft ready.
 
 ---
 
@@ -269,6 +275,7 @@ x-article-publisher-skill/
 │       ├── copy_to_clipboard.py
 │       ├── doctor.sh
 │       ├── open_x_articles_browser.sh
+│       ├── optimize_media_blocks.py
 │       ├── parse_markdown.py
 │       ├── prepare_article_source.py
 │       └── table_to_image.py

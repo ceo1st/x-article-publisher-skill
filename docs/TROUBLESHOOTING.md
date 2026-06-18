@@ -16,6 +16,9 @@ Chinese version: [TROUBLESHOOTING_CN.md](TROUBLESHOOTING_CN.md)
 | PNG upload does not create a media block | X editor ignored that PNG | Convert the image to JPG and retry |
 | X draft opens as blank or Playwright cannot control it | Persistent profile is already held by Chrome | Close only the dedicated profile process, then reopen |
 | Clicks fail after video upload | `Uploading media...` overlay is still active | Wait until upload state disappears |
+| Browser closes or drifts during video upload | Video is too large or high-bitrate for stable X processing | Transcode to 1280px wide H.264/AAC and resume from the draft URL |
+| Media count is correct but order is wrong | One item was inserted under a later anchor | Run preview anchor audit, delete only the misplaced item, and reinsert it |
+| Feishu highlight block shows `Tip` in X | Feishu callout marker leaked into Markdown | Rerun source preparation or remove the marker while keeping quote content |
 
 ---
 
@@ -118,6 +121,55 @@ Rules:
 2. Large videos may take minutes.
 3. If a media block is visible and no error is shown, keep waiting.
 4. If there is no media block and no upload state, re-place the cursor at the anchor and upload again.
+
+If the video is large or high-bitrate, transcode before retrying:
+
+```bash
+ffmpeg -y -i input.mov \
+  -vf "scale='min(1280,iw)':-2" \
+  -c:v libx264 -preset medium -crf 25 -pix_fmt yuv420p \
+  -c:a aac -b:a 64k -movflags +faststart \
+  output.x1280.mp4
+```
+
+Resume from the existing draft URL instead of creating a new draft.
+
+---
+
+## Count Looks Correct But Order Is Wrong
+
+Do not rely only on editor-side media counts. Verify the preview page:
+
+- `img[alt="Image"]` count should match body images.
+- `video[aria-label="Embedded video"]` count should match body videos.
+- For every source media item, the next visible media after its `after_text` anchor should have the expected type.
+
+If one item is misplaced:
+
+1. Delete only that media block in the editor.
+2. Reinsert the missing media at the correct anchor.
+3. Reinsert the misplaced media at its own anchor.
+4. Re-run the preview audit.
+
+---
+
+## Feishu Callout Shows `Tip`
+
+Feishu highlighted blocks can export as:
+
+```markdown
+> Tip
+> Important highlighted text
+```
+
+or:
+
+```markdown
+> [!TIP]
+> Important highlighted text
+```
+
+The skill removes the marker and preserves the highlighted text. If `Tip` still appears, rerun `prepare_article_source.py` with the latest version or remove only the marker line manually.
 
 ---
 

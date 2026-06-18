@@ -29,9 +29,10 @@
 |---|---|
 | 飞书导出的 Markdown 经常没有视频 | 读取飞书 dump JSON，下载 file/video block，再写回 Markdown |
 | 视频容易全部堆到文章最后 | 用文本锚点和忽略空格匹配，把视频插回接近原文的位置 |
+| 飞书高亮块前面多出无意义的 `Tip` | 规范化 callout 标记，删除 `Tip` / `[!TIP]`，但保留多行高亮内容 |
 | 每次登录 X 风险高 | 使用独立持久化浏览器 profile，不复用、不污染你的日常 Chrome profile |
 | 本地 Markdown 也应该能发 | 本地 `.md` 直接解析，不走飞书下载步骤 |
-| X 视频上传容易卡住 | 串行上传视频，每个视频等 `Uploading media...` 消失后再继续 |
+| X 视频上传容易卡住 | 大视频先转码，视频逐个上传，最后用预览 DOM 做锚点顺序审计 |
 
 ## 适合谁
 
@@ -47,6 +48,7 @@
 |---|---|
 | 飞书 docx，`1` 个视频、`10` 张正文图 | 完整生成 X Article 草稿 |
 | 飞书 docx，`10` 个视频、`4` 张正文图 | 视频和图片按原文顺序插入 |
+| 飞书 docx，`8` 个视频、`6` 张正文图 | 通过视频转码和最终锚点审计，保持全部媒体顺序正确 |
 | 飞书 wiki 链接 | 自动使用 `--wiki` 下载，并恢复视频顺序 |
 | 飞书 docx，`34` 个正文媒体 | 触发 X Articles 约 `25` 个正文媒体的实测上限 |
 | 本地 Markdown，含本地图片和 `<video>` | 可跳过飞书下载，直接进入 X 草稿组装 |
@@ -225,10 +227,12 @@ Publish /path/to/article.md to X draft
 1. **输入分流**：飞书链接先下载，本地 Markdown 直接进入解析。
 2. **飞书下载**：调用 `feishu2md dl --dump`；`/wiki/` 链接自动加 `--wiki`。
 3. **视频补回**：读取飞书 JSON 里的 file/video block，用 OpenAPI 下载视频，再按文本锚点插回 Markdown。
-4. **Markdown 解析**：提取标题、封面、正文 HTML、图片、视频、分割线和 block 位置。
-5. **持久化 X 浏览器**：默认使用 `~/.codex/browser-profiles/x-articles`。
-6. **组装草稿**：先封面、标题、正文，再按位置倒序插入图片、视频、分割线。
-7. **视频安全策略**：一次只上传一个视频，等 X 的上传遮罩消失后再继续。
+4. **高亮块清理**：删除飞书导出里无意义的 `Tip` / `[!TIP]` 标记，但保留高亮块里的多行正文。
+5. **Markdown 解析**：提取标题、封面、正文 HTML、图片、视频、分割线和 block 位置。
+6. **持久化 X 浏览器**：默认使用 `~/.codex/browser-profiles/x-articles`。
+7. **组装草稿**：先封面、标题、正文，再按位置倒序插入图片、视频、分割线。
+8. **视频安全策略**：必要时先把大视频转码，逐个上传，等 X 处理完成后再继续。
+9. **最终审计**：在预览页检查媒体数量和“锚点 -> 下一媒体类型”，不能只看总数。
 
 完整框架说明：[docs/GUIDE_CN.md](docs/GUIDE_CN.md)
 
@@ -246,6 +250,8 @@ Publish /path/to/article.md to X draft
 - 飞书链接模式依赖一个飞书自建应用，并且这个应用要开通文档读取、素材下载、Wiki 读取等权限。
 - 大视频在 X 上可能需要几分钟处理，中途打断可能留下半成品草稿。
 - 个别 PNG 可能在 X 编辑器里无响应；实战中转成 JPG 后可继续上传。
+- 过大或码率过高的视频可能让浏览器会话不稳定；实战中先转成 `1280px` 宽的 H.264/AAC 更稳。
+- X 编辑器中途的媒体计数可能漂移，最终要以预览页 DOM 里的 `Image`、`Embedded video` 和锚点顺序为准。
 
 ---
 
@@ -268,6 +274,7 @@ x-article-publisher-skill/
 │       ├── copy_to_clipboard.py
 │       ├── doctor.sh
 │       ├── open_x_articles_browser.sh
+│       ├── optimize_media_blocks.py
 │       ├── parse_markdown.py
 │       ├── prepare_article_source.py
 │       └── table_to_image.py

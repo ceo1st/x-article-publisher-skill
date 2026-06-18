@@ -10,17 +10,13 @@ Publish Markdown content to X (Twitter) Articles editor, preserving formatting w
 
 ## Prerequisites
 
-- Playwright MCP for browser automation (`playwright-cli` or `npx --yes --package @playwright/mcp playwright-cli`)
+- Playwright MCP for browser automation
 - User logged into X with Premium Plus subscription
 - Dedicated persistent browser profile (recommended) to avoid repeated login
-- Python 3.9+ with dependencies from `requirements.txt`
-- For Feishu URL mode: `feishu2md` and either `FEISHU_APP_ID`/`FEISHU_APP_SECRET` or `feishu2md config`
+- Python 3.9+ with dependencies:
+  - macOS: `pip install Pillow pyobjc-framework-Cocoa`
+  - Windows: `pip install Pillow pywin32 clip-util`
 - For Mermaid diagrams: `npm install -g @mermaid-js/mermaid-cli`
-
-Environment check:
-```bash
-bash ~/.codex/skills/x-article-publisher/scripts/doctor.sh
-```
 
 ## Scripts
 
@@ -58,18 +54,11 @@ bash ~/.codex/skills/x-article-publisher/scripts/open_x_articles_browser.sh
 Defaults:
 - Profile path: `~/.codex/browser-profiles/x-articles`
 - Can override with env var: `X_ARTICLES_PROFILE=/custom/path`
-- Uses Codex Playwright wrapper when present, otherwise falls back to `playwright-cli` or `npx @playwright/mcp`
-
-### doctor.sh
-Check runtime dependencies:
-```bash
-bash ~/.codex/skills/x-article-publisher/scripts/doctor.sh [all|feishu|local]
-```
 
 ### prepare_article_source.py
 Auto-route source input:
 - Feishu/Lark URL -> download to local markdown (with video fetch)
-- Local markdown path -> pass through directly; local image/video paths are parsed by `parse_markdown.py`
+- Local markdown path -> pass through directly
 
 ```bash
 python ~/.codex/skills/x-article-publisher/scripts/prepare_article_source.py "<source>"
@@ -79,6 +68,17 @@ Output JSON includes:
 - `mode`: `feishu_url` or `local_markdown`
 - `markdown_path`: local markdown path to publish
 - `videos_downloaded` / `videos_appended`: video handling summary
+- `callouts_normalized`: number of Feishu callout labels such as `Tip` or `[!TIP]` removed while preserving quoted content
+
+### optimize_media_blocks.py
+Reduce body media block count before upload by merging adjacent image runs into vertical collage images:
+```bash
+python ~/.codex/skills/x-article-publisher/scripts/optimize_media_blocks.py article.md \
+  --max-body-media 24 \
+  --output article.optimized.md
+```
+
+Use this when parsed `content_media` is near or above the practical X Articles body-media limit. It preserves videos as separate upload blocks and merges only adjacent body images, leaving the first image/cover alone.
 
 ## Persistent Profile (Recommended)
 
@@ -100,6 +100,45 @@ Note:
 ## Pre-Processing (Optional)
 
 Before publishing, scan the Markdown for elements that need conversion:
+
+### Body Media Budget
+
+X Articles can silently drop new body-media uploads after roughly **25 body media blocks**. The file picker may accept a file while the editor never enters `Uploading media...` and the media count never increases.
+
+Before browser upload, parse media count:
+```bash
+python ~/.codex/skills/x-article-publisher/scripts/parse_markdown.py article.md > article.json
+jq '.content_media | length' article.json
+```
+
+If body media count is `>= 24`, run `optimize_media_blocks.py` and re-parse the optimized Markdown:
+```bash
+python ~/.codex/skills/x-article-publisher/scripts/optimize_media_blocks.py article.md \
+  --max-body-media 24 \
+  --output article.optimized.md > optimize.json
+python ~/.codex/skills/x-article-publisher/scripts/parse_markdown.py article.optimized.md > article.json
+```
+
+Prefer merging adjacent image runs before upload. Do **not** merge videos; videos should keep their own block and original anchor.
+
+### Feishu Callouts / Highlight Blocks
+
+Feishu highlighted blocks may export to Markdown as blockquotes prefixed with `Tip`, `Note`, or `[!TIP]`. These labels are not useful in X Articles and can break reading flow. `prepare_article_source.py` removes those marker lines but keeps the quoted multiline content intact. If `callouts_normalized > 0`, this cleanup happened.
+
+### Video Upload Preflight
+
+Before uploading video-heavy articles, inspect video size and bitrate. Large 40-90MB/high-bitrate videos can close or destabilize the browser session even when X eventually accepts smaller files.
+
+When a video is large or upload is unstable, transcode to a 1280px-wide H.264/AAC upload copy:
+```bash
+ffmpeg -y -i input.mov \
+  -vf "scale='min(1280,iw)':-2" \
+  -c:v libx264 -preset medium -crf 25 -pix_fmt yuv420p \
+  -c:a aac -b:a 64k -movflags +faststart \
+  output.x1280.mp4
+```
+
+Use the transcoded file for X upload, but keep the original Markdown anchor and block order.
 
 ### Tables → PNG
 ```bash
@@ -124,11 +163,10 @@ Dividers are automatically detected by `parse_markdown.py` and output in the `di
 
 For articles with media (images/videos) and dividers, paste ALL text content first, then insert media and dividers at correct positions using block index.
 
-Before browser work, count `content_media`. If there are more than roughly 25 body media items, warn that X Articles has an observed body-media limit and prefer splitting the article or merging images. Do not keep retrying after the editor silently refuses additional media.
-
 1. Route input source (`prepare_article_source.py`)
-2. **(Optional)** Pre-process: Convert tables/mermaid to images
-3. Parse Markdown with Python script → get title, media, **dividers** with block_index, HTML
+2. Parse Markdown once and check body-media budget
+3. **(Optional)** Pre-process: Convert tables/mermaid to images; if body media is near/above 24, run `optimize_media_blocks.py` and re-parse
+4. Parse final Markdown with Python script → get title, media, **dividers** with block_index, HTML
 4. Navigate to X Articles editor
 5. Upload cover image (first image)
 6. Fill title
@@ -136,32 +174,24 @@ Before browser work, count `content_media`. If there are more than roughly 25 bo
 8. Insert content images at positions specified by block_index
 9. Insert content videos at positions specified by block_index
 10. **Insert dividers at positions specified by block_index** (via Insert > Divider menu)
-11. Save as draft (NEVER auto-publish)
+11. Open Preview and audit media count plus anchor order (`anchor text -> following media type`)
+12. Save as draft (NEVER auto-publish)
 
 ## Input Routing
 
 Two trigger modes are supported:
 
 1. Feishu URL mode
-   Input contains a Feishu/Lark doc or wiki link (`feishu.cn` / `larksuite.com` / `feishu.sg`)
+   Input contains a Feishu/Lark doc link (`feishu.cn` / `larksuite.com` / `feishu.sg`)
    - Run `prepare_article_source.py "<url>"`
    - It calls `feishu2md dl --dump` to download markdown
-   - For `/wiki/` URLs it calls `feishu2md dl --dump --wiki`
    - It fetches video file blocks (if any) into local `static/`
-   - It retries missing/0-byte video files and appends `<video src="...">` entries near their source anchors
-   - If a video anchor cannot be found, it reports `video_download_errors` instead of appending the video to the end
+   - It appends `<video src="...">` entries into markdown for downstream upload
 
 2. Local Markdown mode
    Input is a local `.md` / `.markdown` file path
    - Run `prepare_article_source.py "<path/to/file.md>"`
    - It returns the original file directly (no download step)
-   - Supported local media:
-     - `![alt](./static/image.png)`
-     - `<video src="./static/clip.mp4"></video>`
-     - `<video><source src="./static/clip.mp4"></video>`
-     - `[video](./static/clip.mp4)`
-   - Relative paths are resolved from the Markdown file directory
-   - Remote `http(s)` media URLs are reported as not uploadable local files and are outside the reliable upload path
 
 ## Why feishu2md Misses Videos by Default
 
@@ -173,13 +203,6 @@ Two trigger modes are supported:
 
 So videos often disappear in generated markdown unless an extra step is added.
 `prepare_article_source.py` is that extra step for this skill.
-
-## Field-Tested Failure Modes
-
-- X Articles can silently stop accepting body media after about 25 body media items.
-- Some PNG uploads can be accepted by the file input but ignored by the editor; converting that image to JPG is a practical fallback.
-- If `open.feishu.cn` resolves to a fake IP and HTTPS fails with TLS errors, the local network/proxy DNS path is wrong; fix proxy/DNS before rerunning `prepare_article_source.py`.
-- If the X persistent profile is already open, close only the Chrome process using `~/.codex/browser-profiles/x-articles`, then reopen with `open_x_articles_browser.sh`.
 
 ## 高效执行原则 (Efficiency Guidelines)
 
@@ -457,31 +480,32 @@ textbox [ref=editor]:
 
 视频不走剪贴板，使用文件上传（与封面相同的 file chooser 机制）。
 
-For each content video (from `content_videos` array), **按 block_index 从大到小的顺序**。多视频文章必须逐个上传、逐个等待完成，不要连续触发多个视频上传。
+For each content video (from `content_videos` array), **按 block_index 从大到小的顺序**。
 
-1. Locate the paragraph containing `after_text` in the editor. Prefer DOM text search over raw mouse clicks when paragraphs contain links or blockquotes.
-2. Collapse the selection at the end of that paragraph.
-3. Click `Insert` / `Add Media`, then click the `Media` menu item.
-4. Click `Add photos or video`, then upload the video file.
-5. Wait until the editor snapshot no longer contains `Uploading media...`.
+Use file upload, never clipboard paste. Prefer writing the hidden `input[type=file]` after opening `Insert > Media`; `filechooser` events can be flaky on X Articles. For video-heavy drafts, upload one video per browser pass if the editor becomes unstable, then reopen the same draft URL and continue from the next missing anchor.
+
+```bash
+# 1. 在 browser_snapshot 中搜索包含 after_text 的段落并点击
+browser_click: element="paragraph with target text", ref=<paragraph_ref>
+
+# 2. 将光标移动到段落末尾
+browser_press_key: End
+
+# 3. 点击工具栏 Insert / Add Media
+browser_click: element="Add Media button", ref=<add_media_ref>
+
+# 4. 上传视频文件
+browser_file_upload: paths=["/path/to/video.mp4"]
+
+# 5. 等待上传完成
+browser_wait_for textGone="正在上传媒体"
+```
 
 Observed X behavior:
-- Video upload shows a full-page overlay that intercepts later clicks.
-- The overlay can appear a few seconds after `fileChooser.setFiles(...)`.
-- Starting the next upload before `Uploading media...` disappears causes skipped media or wrong placement.
-- Large videos around 80MB can take minutes; keep waiting if the media block exists and no failure toast is visible.
-
-Robust wait loop:
-```bash
-for i in $(seq 1 180); do
-  OUT="$(playwright-cli snapshot)"
-  SNAP="$(printf '%s\n' "$OUT" | sed -n 's/.*Snapshot](\(.*\)).*/\1/p' | tail -1)"
-  if [ -n "$SNAP" ] && ! rg -q 'Uploading media\\.\\.\\.' "$SNAP"; then
-    break
-  fi
-  sleep 3
-done
-```
+- Video upload can create a full-page overlay that intercepts later clicks.
+- Starting the next upload too early can skip media or place it under a later anchor.
+- Large videos should be transcoded before upload.
+- Editor-side remove-media counts can drift during long runs; final preview DOM is the source of truth.
 
 ## Step 6.5: Insert Dividers (Via Menu)
 
@@ -512,6 +536,22 @@ browser_click on "Divider" or "分割线" menuitem
 2. 插入所有视频（从最大 block_index 开始）
 3. 插入所有分割线（从最大 block_index 开始）
 
+## Step 6.8: Final Preview Audit
+
+Before reporting success, open Preview and verify both counts and order:
+
+1. `img[alt="Image"]` count matches body images.
+2. `video[aria-label="Embedded video"]` or `Play Video` count matches body videos.
+3. Cover image exists separately from body images.
+4. For each `content_media` item, find its `after_text` anchor in Preview and confirm the next visible media item has the expected type.
+
+If one media item is under the wrong anchor, do not rebuild the entire draft:
+
+1. Delete only the misplaced media block in the editor.
+2. Insert the missing media at its original anchor.
+3. Reinsert the misplaced video/image at its own anchor.
+4. Re-run the Preview audit.
+
 ## Step 7: Save Draft
 
 1. Verify content pasted (check word count indicator)
@@ -531,6 +571,11 @@ browser_click on "Divider" or "分割线" menuitem
 8. **Dividers via menu** - Markdown `---` must be inserted via Insert > Divider menu (HTML `<hr>` is ignored)
 9. **Video upload method** - Videos must use file upload, not clipboard paste
 10. **Session stability** - Always open X with dedicated persistent profile, never temporary profile
+11. **Media budget** - Keep body media at or below 24 when possible; X may silently ignore uploads after roughly 25 body media blocks
+12. **Verify by position, not count only** - Final audit must check media count and key anchors (`anchor text -> following media type/order`), because a correct video count can still hide one misplaced video
+13. **Callout cleanup** - Remove Feishu callout markers (`Tip`, `[!TIP]`) while preserving the highlighted text and line breaks
+14. **Video preflight** - Transcode oversized/high-bitrate videos to 1280px H.264/AAC before upload when stability matters
+15. **Resume instead of restarting** - If browser/session drift happens mid-upload, reopen the existing draft URL and continue from missing anchors; do not paste the body again
 
 ## Supported Formatting
 
@@ -561,6 +606,18 @@ MD_PATH="$(jq -r '.markdown_path' /tmp/x_source.json)"
 # Step 1: Parse Markdown
 python ~/.codex/skills/x-article-publisher/scripts/parse_markdown.py "$MD_PATH" > /tmp/article.json
 python ~/.codex/skills/x-article-publisher/scripts/parse_markdown.py "$MD_PATH" --html-only > /tmp/article_html.html
+```
+
+If `/tmp/article.json` has too many body media blocks, optimize and re-parse before opening X:
+```bash
+if [ "$(jq '.content_media | length' /tmp/article.json)" -ge 24 ]; then
+  python ~/.codex/skills/x-article-publisher/scripts/optimize_media_blocks.py "$MD_PATH" \
+    --max-body-media 24 \
+    --output /tmp/article.optimized.md > /tmp/article_optimize.json
+  MD_PATH=/tmp/article.optimized.md
+  python ~/.codex/skills/x-article-publisher/scripts/parse_markdown.py "$MD_PATH" > /tmp/article.json
+  python ~/.codex/skills/x-article-publisher/scripts/parse_markdown.py "$MD_PATH" --html-only > /tmp/article_html.html
+fi
 ```
 
 2. Navigate to https://x.com/compose/articles

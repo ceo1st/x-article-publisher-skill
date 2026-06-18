@@ -16,6 +16,9 @@ English version: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 | PNG 上传后没有生成媒体块 | X 编辑器没有接受该 PNG | 转成 JPG 后重传 |
 | X 草稿页面打不开或跳到空白页 | 持久化 profile 被已有 Chrome 会话占用 | 关闭专用 profile 的 Chrome 进程后重开 |
 | 视频上传后下一步点击没反应 | `Uploading media...` 遮罩还在 | 等上传状态消失后再继续 |
+| 上传视频时浏览器关闭或漂移 | 视频过大或码率过高，X 处理不稳定 | 先转成 1280px 宽 H.264/AAC，再从原草稿 URL 继续 |
+| 媒体数量对，但顺序不对 | 某个媒体被插到后面的锚点下 | 跑预览锚点审计，只删除错位项并重插 |
+| X 正文里出现无意义的 `Tip` | 飞书高亮块标记漏进 Markdown | 重新运行 source preparation，或只删除标记行、保留正文 |
 
 ---
 
@@ -118,6 +121,55 @@ X 上传视频时会出现 `Uploading media...`。这个状态存在时不要继
 2. 大视频可以等几分钟。
 3. 如果页面已有媒体块且没有错误提示，继续等待。
 4. 如果长时间没有媒体块，也没有上传状态，重新定位锚点后再上传。
+
+如果视频文件大或码率高，先转码再重试：
+
+```bash
+ffmpeg -y -i input.mov \
+  -vf "scale='min(1280,iw)':-2" \
+  -c:v libx264 -preset medium -crf 25 -pix_fmt yuv420p \
+  -c:a aac -b:a 64k -movflags +faststart \
+  output.x1280.mp4
+```
+
+重试时回到已有草稿 URL，不要新建草稿。
+
+---
+
+## 媒体数量对但顺序错
+
+不要只看编辑器里的媒体数量。最终要在预览页检查：
+
+- `img[alt="Image"]` 数量等于正文图片数。
+- `video[aria-label="Embedded video"]` 数量等于正文视频数。
+- 每个源媒体的 `after_text` 锚点后，下一个可见媒体类型正确。
+
+如果发现某个媒体错位：
+
+1. 在编辑器里只删除那个错位媒体块。
+2. 把缺失媒体补回正确锚点。
+3. 把错位媒体重新插回它自己的锚点。
+4. 再跑一次预览审计。
+
+---
+
+## 飞书高亮块出现 `Tip`
+
+飞书高亮块有时会导出成：
+
+```markdown
+> Tip
+> Important highlighted text
+```
+
+或者：
+
+```markdown
+> [!TIP]
+> Important highlighted text
+```
+
+这个 skill 会删除标记，并保留高亮正文。如果 `Tip` 仍然出现，使用最新版重新运行 `prepare_article_source.py`，或者手动只删除标记行。
 
 ---
 

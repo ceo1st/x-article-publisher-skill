@@ -375,6 +375,7 @@ def markdown_to_html(markdown: str) -> str:
     # - Drop admonition markers like [!TIP], [!NOTE], etc.
     # - Preserve multiline content with <br>
     callout_marker = re.compile(r'^\s*\[![A-Z]+\]\s*$', re.IGNORECASE)
+    plain_callout_markers = {"tip", "note", "warning", "important", "caution", "info"}
 
     def convert_blockquote_group(match):
         group = match.group(0)
@@ -383,7 +384,7 @@ def markdown_to_html(markdown: str) -> str:
         for raw in raw_lines:
             # Remove leading ">" and one optional space
             text = re.sub(r'^\s*>\s?', '', raw).rstrip()
-            if callout_marker.match(text):
+            if callout_marker.match(text) or text.strip().lower() in plain_callout_markers:
                 continue
             lines.append(text)
 
@@ -398,7 +399,7 @@ def markdown_to_html(markdown: str) -> str:
         return f"<blockquote>{'<br>'.join(lines)}</blockquote>"
 
     html = re.sub(
-        r'(?m)(?:^\s*>.*(?:\n|$))+',
+        r'(?m)(?:^[ \t]*>.*(?:\n|$))+',
         convert_blockquote_group,
         html,
     )

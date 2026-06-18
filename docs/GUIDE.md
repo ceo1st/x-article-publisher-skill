@@ -22,8 +22,9 @@ The skill has two source modes.
 3. Find the generated Markdown and dump JSON.
 4. Extract video file blocks from dump JSON.
 5. Download video files from Feishu OpenAPI into `static/`.
-6. Insert `<video src="static/...">` blocks near source text anchors.
-7. Return the local Markdown path.
+6. Normalize Feishu callout labels such as `Tip` or `[!TIP]` while keeping multiline quoted content.
+7. Insert `<video src="static/...">` blocks near source text anchors.
+8. Return the local Markdown path.
 
 ### Local Markdown Mode
 
@@ -183,7 +184,8 @@ The publishing workflow should follow this order:
 7. Insert content images by descending `block_index`.
 8. Insert content videos by descending `block_index`.
 9. Insert dividers by descending `block_index`.
-10. Save draft only.
+10. Open preview and verify media count plus anchor order.
+11. Save draft only.
 
 Do not auto-publish.
 
@@ -210,16 +212,52 @@ This prevents the failure mode where all videos appear at the end of the X artic
 
 X video processing creates an `Uploading media...` overlay that can intercept further clicks. The safe rule is:
 
-1. Upload one video file.
-2. Wait until the upload overlay disappears.
-3. Confirm no failure toast is visible.
-4. Continue with the next video.
+1. Transcode very large or high-bitrate videos before upload when possible.
+2. Upload one video file.
+3. Wait until the upload overlay disappears.
+4. Confirm no failure toast is visible.
+5. Continue with the next video.
 
 Large videos can take minutes. Keep waiting if the media block is visible and no failure is shown.
 
+Recommended video preflight for fragile uploads:
+
+```bash
+ffmpeg -y -i input.mov \
+  -vf "scale='min(1280,iw)':-2" \
+  -c:v libx264 -preset medium -crf 25 -pix_fmt yuv420p \
+  -c:a aac -b:a 64k -movflags +faststart \
+  output.x1280.mp4
+```
+
+This has been more stable than uploading 40-90MB, high-bitrate screen recordings directly.
+
+When the X editor becomes unstable during long video runs, restart the dedicated profile and resume from the existing draft URL. Do not paste the article body again; locate the next missing media anchor and continue.
+
 ---
 
-## 8. Field Limits
+## 8. Final Preview Audit Framework
+
+Do not treat a draft as ready just because the media count looks right in the editor. A correct count can still hide one media item inserted under the wrong anchor.
+
+The final audit should check:
+
+1. Cover image exists.
+2. Body image count matches `content_images`.
+3. Body video count matches `content_videos`.
+4. Each source media anchor maps to the next visible media item of the expected type.
+5. For videos, preview DOM contains `video[aria-label="Embedded video"]` or `Play Video` buttons.
+
+If a video appears under the wrong later anchor:
+
+1. Delete only that misplaced media block.
+2. Reinsert the missing image/video at its original anchor.
+3. Reinsert the misplaced video at its own anchor.
+4. Re-run the preview audit.
+
+---
+
+## 9. Field Limits
 
 ### Body media count
 
@@ -235,13 +273,17 @@ Recommended handling:
 
 Some PNG files are accepted by the file input but do not create a media block in the X editor. Converting that image to JPG and retrying has worked as a practical fallback.
 
+### Feishu callout labels
+
+Feishu highlighted blocks may export as blockquotes prefixed with `Tip`, `Note`, or `[!TIP]`. These labels are not useful in X Articles and can break the reading flow. The source preparation and Markdown parser remove those labels while preserving the blockquote body and line breaks.
+
 ### Persistent profile ownership
 
 If the persistent profile is already held by an existing Chrome process, Playwright may report that the page opened in an existing browser session. Close only the Chrome process using `~/.codex/browser-profiles/x-articles`; do not close the user's daily Chrome profile.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 For a focused troubleshooting checklist, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
