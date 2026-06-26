@@ -140,6 +140,21 @@ ffmpeg -y -i input.mov \
 
 Use the transcoded file for X upload, but keep the original Markdown anchor and block order.
 
+### GIF Upload Preflight
+
+Treat large GIF files as video-like media, not static screenshots. Clipboard image paste can turn a GIF into a still image, and X can silently accept a large GIF file input while never adding a media block.
+
+If a GIF is large, or if uploading it does not increase the editor media count, convert it to MP4 and insert the MP4 at the original GIF anchor:
+
+```bash
+ffmpeg -y -i input.gif \
+  -vf "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))',format=yuv420p" \
+  -movflags +faststart -c:v libx264 -preset medium -crf 25 -an \
+  input.gif.mp4
+```
+
+In final audit, count this converted GIF as one video-like media block at the original GIF position.
+
 ### Tables → PNG
 ```bash
 # Extract table to temp file, then convert
@@ -476,6 +491,17 @@ textbox [ref=editor]:
 
 **从大到小插入**可以避免位置偏移问题。
 
+### Rich Text Anchor Matching
+
+X can split a Markdown sentence across multiple editor text nodes when the source contains bold spans, links, or mixed Chinese/English emphasis. A full `after_text` string may not exist as one DOM text node.
+
+Fallback matching order:
+
+1. Try the normalized full anchor with Markdown markers removed (`**`, heading marks, blockquote marks).
+2. Try progressively shorter prefixes.
+3. For split rich text, use a distinctive short prefix such as the opening clause, but only if it is unique enough in the article.
+4. In Preview, re-check with a longer exact nearby phrase whenever a short anchor such as `比方说` could match an earlier paragraph.
+
 ## Step 6.2: Insert Content Videos (File Upload)
 
 视频不走剪贴板，使用文件上传（与封面相同的 file chooser 机制）。
@@ -506,6 +532,9 @@ Observed X behavior:
 - Starting the next upload too early can skip media or place it under a later anchor.
 - Large videos should be transcoded before upload.
 - Editor-side remove-media counts can drift during long runs; final preview DOM is the source of truth.
+- For adjacent mixed-media clusters (for example: video, then the next paragraph has another video plus an image), a correct count can still hide swapped order. Audit the local sequence, not only the first media after each anchor.
+- If a local cluster is wrong, delete only that cluster in the editor, then reinsert it from bottom to top. Example: for `anchor A -> video1` followed by `anchor B -> video2 + image`, insert `image at B`, then `video2 at B`, then `video1 at A`.
+- X failed uploads can leave visible blocks saying `Something went wrong. Please try again later.` with a `Delete block` button. Delete those blocks before final Preview audit.
 
 ## Step 6.5: Insert Dividers (Via Menu)
 
@@ -544,6 +573,9 @@ Before reporting success, open Preview and verify both counts and order:
 2. `video[aria-label="Embedded video"]` or `Play Video` count matches body videos.
 3. Cover image exists separately from body images.
 4. For each `content_media` item, find its `after_text` anchor in Preview and confirm the next visible media item has the expected type.
+5. For same-anchor media runs, confirm the next N visible media items preserve the Markdown order.
+6. For adjacent video/image clusters, confirm the local sequence around all involved anchors, not only the nearest media.
+7. Confirm Preview does not contain `Something went wrong. Please try again later.`.
 
 If one media item is under the wrong anchor, do not rebuild the entire draft:
 
@@ -551,6 +583,13 @@ If one media item is under the wrong anchor, do not rebuild the entire draft:
 2. Insert the missing media at its original anchor.
 3. Reinsert the misplaced video/image at its own anchor.
 4. Re-run the Preview audit.
+
+If a cluster is wrong:
+
+1. Delete the smallest contiguous cluster that contains the misplaced items.
+2. Reinsert from the latest anchor back to the earliest anchor.
+3. For multiple media under the same anchor, insert in reverse original order so the final visual order matches the Markdown.
+4. Re-run Preview and inspect `nextThree`/local media sequence around the repaired anchors.
 
 ## Step 7: Save Draft
 
@@ -576,6 +615,9 @@ If one media item is under the wrong anchor, do not rebuild the entire draft:
 13. **Callout cleanup** - Remove Feishu callout markers (`Tip`, `[!TIP]`) while preserving the highlighted text and line breaks
 14. **Video preflight** - Transcode oversized/high-bitrate videos to 1280px H.264/AAC before upload when stability matters
 15. **Resume instead of restarting** - If browser/session drift happens mid-upload, reopen the existing draft URL and continue from missing anchors; do not paste the body again
+16. **GIF fallback** - Upload GIFs through file input when preserving animation matters; if X silently ignores a large GIF, convert it to MP4 and upload that at the same anchor
+17. **Adjacent cluster repair** - For nearby video/image groups, verify local order in Preview; repair by deleting only that small cluster and reinserting from bottom to top
+18. **Failed block cleanup** - Delete `Something went wrong` / `Delete block` placeholders before reporting a draft ready
 
 ## Supported Formatting
 

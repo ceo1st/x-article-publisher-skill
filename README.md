@@ -34,6 +34,8 @@ It downloads the document to Markdown, restores missing Feishu video blocks, kee
 | Repeated X login is risky | Uses a dedicated persistent browser profile, isolated from your daily Chrome profile |
 | Local Markdown should also work | Skips Feishu download and directly parses local image/video paths |
 | X video upload is fragile | Transcodes oversized videos, uploads one video at a time, and verifies final preview order by anchor |
+| Large GIFs can silently fail or become still images | Uploads GIFs as file media when possible, and converts stubborn large GIFs to MP4 while keeping the original anchor |
+| Adjacent video/image clusters can shuffle | Audits the local media sequence in Preview and repairs only the affected cluster instead of rebuilding the whole draft |
 
 ## Who It Is For
 
@@ -52,6 +54,8 @@ The workflow has been tested on real articles, not only fixtures:
 | Feishu docx with `8` videos and `6` body images | Used video transcodes plus final anchor audit to keep all media in place |
 | Feishu wiki link | Used `--wiki` and restored video ordering |
 | Feishu docx with `34` body media items | Hit the observed X Articles body-media limit around `25` items |
+| Feishu docx with adjacent videos plus image under nearby anchors | Repaired local cluster by deleting only the affected media blocks and reinserting from bottom to top |
+| Feishu docx with `18MB` GIF | X ignored the GIF upload, so it was converted to MP4 and reinserted at the same anchor |
 | Local Markdown with local images and `<video>` tags | Skipped Feishu download and assembled the X draft directly |
 
 ---
@@ -251,8 +255,10 @@ Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - Feishu URL mode depends on a Feishu custom app with document read, media download, and wiki read permissions for `/wiki/` links.
 - Large videos can take minutes to process on X; interruption may leave a partial draft.
 - Some PNG files may be accepted by the file input but ignored by the X editor. Converting that image to JPG has worked as a fallback in practice.
+- Large GIF files may be accepted by the picker but never become a media block, or they may lose animation if pasted through the clipboard. Convert stubborn GIFs to MP4 and upload the MP4 at the original GIF anchor.
 - Very large or high-bitrate videos may close or destabilize the browser session. In practice, transcoding to `1280px` wide H.264/AAC before upload is much more reliable.
 - X editor-side media counts can drift during long uploads. Use preview DOM checks for `Image`, `Embedded video`, and anchor-to-next-media type before considering a draft ready.
+- When two or more media items share one anchor, or when video/image anchors are adjacent, count-only checks are not enough. Inspect the next few visible media items around that anchor and repair only the affected cluster if order drifted.
 
 ---
 

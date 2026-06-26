@@ -19,6 +19,9 @@ English version: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 | 上传视频时浏览器关闭或漂移 | 视频过大或码率过高，X 处理不稳定 | 先转成 1280px 宽 H.264/AAC，再从原草稿 URL 继续 |
 | 媒体数量对，但顺序不对 | 某个媒体被插到后面的锚点下 | 跑预览锚点审计，只删除错位项并重插 |
 | X 正文里出现无意义的 `Tip` | 飞书高亮块标记漏进 Markdown | 重新运行 source preparation，或只删除标记行、保留正文 |
+| GIF 上传看似成功但没有媒体块 | X 静默拒绝了大 GIF | 把 GIF 转成 MP4，再插回同一个锚点 |
+| 相邻视频/图片顺序串了 | 相邻锚点或同锚点媒体组在插入时漂移 | 只删除这个局部媒体组，再从后往前重插 |
+| Preview 或编辑器里出现 `Something went wrong. Please try again later.` | X 留下了失败上传块 | 点击旁边的 `Delete block`，清掉后再做最终审计 |
 
 ---
 
@@ -89,6 +92,23 @@ PY
 
 ---
 
+## GIF 上传被吞或丢动画
+
+如果要保留动画，不要用剪贴板粘贴 GIF。剪贴板路径可能把 GIF 变成静态图。
+
+如果文件上传接受了 GIF，但编辑器媒体数量没有增加，或者 Preview 里对应锚点后没有出现媒体，把 GIF 转成 MP4：
+
+```bash
+ffmpeg -y -i input.gif \
+  -vf "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))',format=yuv420p" \
+  -movflags +faststart -c:v libx264 -preset medium -crf 25 -an \
+  input.gif.mp4
+```
+
+然后通过 `Insert > Media` 把 `input.gif.mp4` 插回原 GIF 的锚点。最终审计时，把它当成原 GIF 对应的一个视频类媒体块。
+
+---
+
 ## X 持久化 profile 被占用
 
 典型现象：
@@ -150,6 +170,38 @@ ffmpeg -y -i input.mov \
 2. 把缺失媒体补回正确锚点。
 3. 把错位媒体重新插回它自己的锚点。
 4. 再跑一次预览审计。
+
+对于相邻媒体组，不要只检查“下一个媒体”。比如 Markdown 是这样：
+
+```markdown
+段落 A
+<video src="a.mp4"></video>
+
+段落 B
+<video src="b.mp4"></video>
+![](b.png)
+```
+
+如果 Preview 里总数对，但局部顺序错：
+
+1. 回到编辑器。
+2. 只删除包含错位媒体的最小连续媒体组。
+3. 从后往前重插：先插 `b.png`，再插 `b.mp4`，最后插 `a.mp4`。
+4. 重新打开 Preview，检查两个锚点后面接下来的几个媒体块。
+
+最终确认时不要依赖太短的模糊锚点，例如 `for example` 或 `比方说`，它们可能匹配到前文。要用靠近目标媒体的更长原句做审计。
+
+---
+
+## 草稿里残留失败上传块
+
+X 有时会留下失败上传占位：
+
+```text
+Something went wrong. Please try again later.
+```
+
+看到这个文本时，不要报告草稿完成。点击旁边的 `Delete block` 按钮清掉，再重新跑 Preview 审计。
 
 ---
 

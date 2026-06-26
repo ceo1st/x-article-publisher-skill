@@ -19,6 +19,9 @@ Chinese version: [TROUBLESHOOTING_CN.md](TROUBLESHOOTING_CN.md)
 | Browser closes or drifts during video upload | Video is too large or high-bitrate for stable X processing | Transcode to 1280px wide H.264/AAC and resume from the draft URL |
 | Media count is correct but order is wrong | One item was inserted under a later anchor | Run preview anchor audit, delete only the misplaced item, and reinsert it |
 | Feishu highlight block shows `Tip` in X | Feishu callout marker leaked into Markdown | Rerun source preparation or remove the marker while keeping quote content |
+| GIF upload appears to succeed but no media block appears | X silently rejected a large GIF | Convert the GIF to MP4 and upload the MP4 at the same anchor |
+| Adjacent videos/images are swapped | Nearby anchors or same-anchor media run drifted during insertion | Delete only that local media cluster, then reinsert from the latest anchor back to the earliest |
+| Preview/editor shows `Something went wrong. Please try again later.` | Failed X media upload block remains in the draft | Use the visible `Delete block` button before final audit |
 
 ---
 
@@ -89,6 +92,23 @@ Then retry with the JPG.
 
 ---
 
+## GIF Upload Is Ignored Or Loses Animation
+
+Do not use clipboard paste for GIFs when animation matters. Clipboard image paste can turn the GIF into a static image.
+
+If file upload accepts a GIF but the editor media count does not increase, or Preview does not show the media at that anchor, convert it to MP4:
+
+```bash
+ffmpeg -y -i input.gif \
+  -vf "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))',format=yuv420p" \
+  -movflags +faststart -c:v libx264 -preset medium -crf 25 -an \
+  input.gif.mp4
+```
+
+Upload `input.gif.mp4` through `Insert > Media` at the original GIF anchor. In the final audit, count it as one video-like media block representing the original GIF.
+
+---
+
 ## Persistent X Profile Is Busy
 
 Typical message:
@@ -150,6 +170,38 @@ If one item is misplaced:
 2. Reinsert the missing media at the correct anchor.
 3. Reinsert the misplaced media at its own anchor.
 4. Re-run the preview audit.
+
+For adjacent media clusters, check more than one following media item. This matters when the Markdown looks like:
+
+```markdown
+Paragraph A
+<video src="a.mp4"></video>
+
+Paragraph B
+<video src="b.mp4"></video>
+![](b.png)
+```
+
+If Preview shows the right total count but the local order is wrong:
+
+1. Return to the editor.
+2. Delete the smallest contiguous cluster containing the swapped media.
+3. Reinsert from bottom to top: `b.png`, then `b.mp4`, then `a.mp4`.
+4. Reopen Preview and inspect the next few visible media blocks after both anchors.
+
+Avoid using very short fuzzy anchors such as `for example` or `比方说` for final proof. They can match an earlier paragraph. Use a longer exact phrase near the actual media anchor when auditing.
+
+---
+
+## Failed Upload Blocks Remain In The Draft
+
+X can leave a visible failed upload placeholder:
+
+```text
+Something went wrong. Please try again later.
+```
+
+Do not report the draft ready while this text exists. Click the nearby `Delete block` button, then rerun Preview audit.
 
 ---
 
